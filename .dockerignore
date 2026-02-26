@@ -1,0 +1,28 @@
+# Git and IDEs
+.git
+.gitignore
+.idea
+.vscode
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+
+# Testing and docs
+tests/
+.pytest_cache
+.coverage
+htmlcov
+docs/
+
+# Research
+reserch/
+
+# Misc
+*.md
+LICENSE
+uv.lock
