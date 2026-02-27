@@ -334,24 +334,7 @@ The real distinction of khorsyio is full-stack cohesion: in-process event bus, H
 
 ## Documentation
 
-- [Getting started](docs/getting_started.md)
-- [Architecture](docs/architecture.md)
-- [App and lifecycle](docs/app.md)
-- [Settings](docs/settings.md)
-- [HTTP](docs/http.md)
-- [Bus, metrics, event log](docs/bus.md)
-- [Events and structs](docs/events.md)
-- [Handlers and DI](docs/handlers.md)
-- [Domains and namespace](docs/domain.md)
-- [WebSocket](docs/transport.md)
-- [HTTP client](docs/client.md)
-- [Database](docs/db.md)
-- [SQLAlchemy helpers](docs/query.md)
-- [Multiprocessing](docs/multi_core.md)
-- [Decomposition methodology](docs/decomposition.md)
-- [Templates and recipes](docs/templates.md)
-- [Architecture patterns](docs/architecture_patterns.md)
-- [LLM guidelines](docs/llm_guidelines.md)
+- [Documentation](https://github.com/khorsyio/khorsyio-docs)
 
 ---
 

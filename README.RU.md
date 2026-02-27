@@ -334,24 +334,8 @@ BUS_HANDLER_TIMEOUT=30.0
 
 ## Документация
 
-- [Быстрый старт](docs/getting_started.md)
-- [Архитектура](docs/architecture.md)
-- [App и жизненный цикл](docs/app.md)
-- [Настройки](docs/settings.md)
-- [HTTP](docs/http.md)
-- [Bus, метрики, журнал](docs/bus.md)
-- [События и структуры](docs/events.md)
-- [Handlers и DI](docs/handlers.md)
-- [Domains и namespace](docs/domain.md)
-- [WebSocket](docs/transport.md)
-- [HTTP client](docs/client.md)
-- [Database](docs/db.md)
-- [SQLAlchemy helpers](docs/query.md)
-- [Multiprocessing](docs/multi_core.md)
-- [Методология декомпозиции](docs/decomposition.md)
-- [Шаблоны и рецепты](docs/templates.md)
-- [Архитектурные паттерны](docs/architecture_patterns.md)
-- [Руководство для LLM](docs/llm_guidelines.md)
+- [Документация](https://github.com/khorsyio/khorsyio-docs)
+
 
 ---
 
