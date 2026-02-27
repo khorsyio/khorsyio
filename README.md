@@ -1,40 +1,24 @@
 # khorsyio
 
-Async event-driven python framework. ASGI, socketio, msgspec, SQLAlchemy 2.0 (async with asyncpg).
+Async Python framework for event-driven applications. ASGI, socket.io, msgspec, SQLAlchemy 2.0 async.
 
-## Документация
+Business logic is built from isolated handlers connected through an internal event bus. Each block is a separate class with an explicit input, output, and dependencies. Blocks have no knowledge of each other.
 
-- Общее оглавление docs: [docs/README.md](docs/README.md)
-- Быстрый старт: [docs/getting_started.md](docs/getting_started.md)
-- Архитектура: [docs/architecture.md](docs/architecture.md)
-- Приложение App и жизненный цикл: [docs/app.md](docs/app.md)
-- Настройки окружения: [docs/settings.md](docs/settings.md)
-- HTTP API: [docs/http.md](docs/http.md)
-- Шина событий Bus, метрики, журнал: [docs/bus.md](docs/bus.md)
-- События и структуры: [docs/events.md](docs/events.md)
-- Обработчики и DI: [docs/handlers.md](docs/handlers.md)
-- Домены и namespace: [docs/domain.md](docs/domain.md)
-- WebSocket транспорт: [docs/transport.md](docs/transport.md)
-- HTTP клиент: [docs/client.md](docs/client.md)
-- База данных: [docs/db.md](docs/db.md)
-- Хелперы SQLAlchemy: [docs/query.md](docs/query.md)
-- Многоядерная архитектура (Multiprocessing): [docs/multi_core.md](docs/multi_core.md)
+The framework is designed so that building from scratch — including with LLM-assisted development — is as predictable and structured as possible.
 
-### Паттерны и методология
-- Методология декомпозиции: [docs/decomposition.md](docs/decomposition.md)
-- Шаблоны кода и рецепты: [docs/templates.md](docs/templates.md)
-- Анализ применимости и архитектурные паттерны: [docs/architecture_patterns.md](docs/architecture_patterns.md)
-- Руководство для LLM агентов: [docs/llm_guidelines.md](docs/llm_guidelines.md)
+---
 
-## Установка
+## Installation
 
-```
-pip install .
-pip install ".[granian]"
-pip install ".[uvicorn]"
+```bash
+pip install khorsyio
+pip install "khorsyio[granian]"
+pip install "khorsyio[uvicorn]"
 ```
 
-## Быстрый старт
+---
+
+## Quick start
 
 ```python
 from khorsyio import App, Response, CorsConfig
@@ -46,49 +30,32 @@ if __name__ == "__main__":
     app.run()
 ```
 
-## Структуры
+---
 
-```python
-import msgspec
+## Why it works well with LLM
 
-class UserIn(msgspec.Struct):
-    name: str
-    age: int = 0
-```
+**Isolated blocks.** Each Handler is self-contained. An LLM generates one block at a time without needing to hold the entire system in context.
 
-## Context
+**Structs as contracts.** `msgspec.Struct` is simultaneously documentation and validation. The contract is defined before the first line of logic is written. The LLM implements logic against a ready-made contract.
 
-Каждое событие несет Context, автоматически прокидывается через цепочку handlers.
+**Event graph as architecture.** Data flow is described with strings `subscribes_to` and `publishes`. Explainable to an LLM in one paragraph — it reproduces the correct chain without routing errors.
 
-```python
-# ctx.trace_id  - сквозной id запроса
-# ctx.user_id   - id пользователя
-# ctx.extra     - произвольные данные (роль, сессия)
-# ctx.source    - кто создал событие
-# ctx.timestamp - время создания
-```
+**Minimal boilerplate.** Serialization, context, tracing, DI — all automatic. The LLM only writes `process`.
 
-## Error
-
-```python
-from khorsyio import Error
-
-# error.code     - строковый код ("timeout", "validation")
-# error.message  - описание
-# error.source   - источник
-# error.details  - dict с дополнительными данными
-
-result = await bus.request("event", data, response_type="event.done")
-if result.is_error:
-    print(result.error.code, result.error.message)
-```
+---
 
 ## Handlers
 
-Реализуй process - получи данные и context.
-
 ```python
+import msgspec
 from khorsyio import Handler, Context
+
+class UserIn(msgspec.Struct):
+    name: str = ""
+
+class UserOut(msgspec.Struct):
+    id: int = 0
+    name: str = ""
 
 class CreateUser(Handler):
     subscribes_to = "user.create"
@@ -96,97 +63,93 @@ class CreateUser(Handler):
     input_type = UserIn
     output_type = UserOut
 
+    def __init__(self, db):
+        self._db = db  # db -> app.db
+
     async def process(self, data: UserIn, ctx: Context) -> UserOut:
-        return UserOut(id=1, name=data.name)
+        row = await self._db.fetchrow(
+            "insert into users (name) values ($1) returning id, name", data.name)
+        return UserOut(**row)
 ```
 
-## Handler DI
+DI by parameter name: `db -> app.db`, `client -> app.client`, `bus -> app.bus`, `transport -> app.transport`, `app -> app`.
 
-Имя параметра в __init__ определяет что инжектится.
-
-```python
-class MyHandler(Handler):
-    subscribes_to = "x"
-    publishes = ""
-
-    def __init__(self, db, client):
-        self._db = db           # -> app.db
-        self._client = client   # -> app.client
-
-    async def process(self, data, ctx): ...
-```
-
-Маппинг имен: db -> app.db, client -> app.client, bus -> app.bus, transport -> app.transport, app -> app. Неизвестные имена получают app.
+---
 
 ## Domains
 
-Группировка handlers и routes с namespace.
+Grouping handlers and routes with a namespace.
 
 ```python
 from khorsyio import Domain, Route
 
 users = Domain()
-users.namespace = "user"        # handler events получат префикс "user."
-users.handlers = [CreateUser]   # классы, не экземпляры
+users.namespace = "user"
+users.handlers = [CreateUser]
 users.routes = [Route("GET", "/users", get_users)]
+
+app.mount(users)
+# subscribes_to "create" -> "user.create"
+# publishes "created"    -> "user.created"
 ```
 
+---
+
+## Context
+
+Automatically propagated through the entire handler chain.
+
 ```python
-app.mount(users)
-# CreateUser.subscribes_to "create" -> "user.create"
-# CreateUser.publishes "created" -> "user.created"
+ctx.trace_id   # request-wide trace id
+ctx.user_id    # user id
+ctx.extra      # arbitrary data (role, session)
+ctx.source     # who created the event
+ctx.timestamp  # creation time
 ```
+
+---
 
 ## Event bus
 
-Публикация
-
 ```python
+# publish
 await bus.publish("user.create", UserIn(name="test"), source="http", user_id="u1")
-```
 
-Синхронный запрос (publish + wait)
-
-```python
+# request with response wait
 result = await bus.request(
     "user.create", UserIn(name="test"),
     response_type="user.created",
-    source="http", user_id="u1", extra={"role": "admin"},
-    timeout=5.0)
+    source="http", user_id="u1", timeout=5.0)
+
+if result.is_error:
+    print(result.error.code, result.error.message)
 ```
 
-## Scheduled tasks
+Scheduled tasks:
 
 ```python
 app.bus.schedule("system.healthcheck", HealthCheck(), interval=60.0)
 ```
 
-Публикует событие с заданным интервалом. Handler обрабатывает как обычное событие.
+---
 
-## Http
-
-Request
+## HTTP
 
 ```python
 async def handler(req, send):
-    body = await req.json(MyStruct)
-    name = req.param("name", "default")
-    id = req.path_params["id"]
+    body  = await req.json(MyStruct)
+    name  = req.param("name", "default")
+    id    = req.path_params["id"]
     token = req.header("authorization")
-    session = req.cookie("session")
-    bus = req.state["bus"]  # от middleware
-```
+    bus   = req.state["bus"]
 
-Response
-
-```python
 await Response.ok(send, message="done")
-await Response.ok(send, cookies={"session": {"value": "abc", "path": "/", "httponly": True, "max_age": 3600}})
 await Response.json(send, data, headers={"x-request-id": "123"})
 await Response.error(send, "not found", 404, code="not_found")
+await Response.ok(send, cookies={"session": {"value": "abc", "path": "/", "httponly": True, "max_age": 3600}})
 ```
 
-## CORS
+CORS:
 
 ```python
 app = App(cors=CorsConfig(
@@ -196,7 +159,7 @@ app = App(cors=CorsConfig(
     max_age=86400))
 ```
 
-## Middleware
+Middleware:
 
 ```python
 async def inject_bus(req):
@@ -210,109 +173,115 @@ app.router.use(inject_bus)
 app.router.use(auth)
 ```
 
-## Metrics
+---
 
-```python
-app.bus.metrics.snapshot()
-# {"HandlerName": {"processed": 10, "errors": 1, "avg_ms": 5.2, "last_error": "..."}}
+## WebSocket
 
-app.router.get("/metrics", lambda req, send: Response.json(send, app.bus.metrics.snapshot()))
-```
-
-## Event log
-
-Последние N событий в памяти для отладки.
-
-```python
-app.bus.event_log.recent(50)                          # последние 50
-app.bus.event_log.recent(20, event_type="user.create") # по типу
-app.bus.event_log.recent(20, trace_id="abc123")        # по trace
-
-app.router.get("/events", lambda req, send: Response.json(send, app.bus.event_log.recent(
-    n=int(req.param("n", "50")),
-    event_type=req.param("type"),
-    trace_id=req.param("trace"))))
-```
-
-Размер буфера настраивается через event_log_size в Bus.
-
-## Websocket
-
-Протокол
+Incoming message protocol:
 
 ```json
 {"event_type": "chat.msg", "payload": {"text": "hello"}, "trace_id": "optional", "user_id": "optional"}
 ```
 
-ws sid сохраняется в ctx.extra["_ws_sid"]. Handler может отправить ответ отправителю через transport.reply_to_sender(envelope).
+Client `sid` is stored in `ctx.extra["_ws_sid"]`. Replying to sender:
 
 ```python
 class ReplyHandler(Handler):
     subscribes_to = "chat.reply"
     publishes = ""
+
     def __init__(self, transport):
         self._transport = transport
+
     async def process(self, data, ctx):
         if isinstance(data, Envelope):
             await self._transport.reply_to_sender(data)
 ```
 
-Клиент
+Client:
 
 ```python
 from khorsyio import SocketClient
+
 client = SocketClient("http://localhost:8000")
 client.on("chat.reply", lambda data: print(data["payload"]))
 await client.connect()
 await client.send("chat.msg", {"text": "hello"})
 ```
 
+---
+
 ## Database
 
-Интегрирована SQLAlchemy 2.0 (async) с драйвером asyncpg. Доступны два способа работы:
-
-1) Простой доступ к БД через совместимые методы (обратная совместимость с asyncpg-стилем):
+Simple methods (asyncpg-style):
 
 ```python
-rows = await app.db.fetch("select * from users where id = $1", user_id)
-row = await app.db.fetchrow("select * from users where id = $1", user_id)
-val = await app.db.fetchval("select count(*) from users where active = $1", True)
-res = await app.db.execute("insert into users (name) values ($1)", name)  # -> "OK 1"
+rows = await self._db.fetch("select * from users where active = $1", True)
+row  = await self._db.fetchrow("select * from users where id = $1", user_id)
+val  = await self._db.fetchval("select count(*) from users")
+res  = await self._db.execute("insert into users (name) values ($1)", name)
 ```
 
-2) Полноценный SQLAlchemy Core/ORM через сессию:
+SQLAlchemy ORM via session:
 
 ```python
 from sqlalchemy import select
-from khorsyio.db import Base  # для моделей ORM при необходимости
 
 async with app.db.session() as s:
     result = await s.execute(select(User).where(User.active == True))
     users = result.scalars().all()
 ```
 
-Фильтры, сортировка и пагинация:
+Filters, sorting, pagination:
 
 ```python
-from sqlalchemy import select
-from khorsyio.db import apply_filters, apply_order, paginate
+from khorsyio.db import apply_filters, apply_order, paginate, apply_cursor
 
 stmt = select(User)
 stmt = apply_filters(stmt, User, {"age__gte": 18, "name__icontains": "alex"})
-stmt = apply_order(stmt, User, ["-created_at", "id"])  # DESC по created_at, ASC по id
+stmt = apply_order(stmt, User, ["-created_at", "id"])
 
 async with app.db.session() as s:
     page = await paginate(s, stmt, page=1, per_page=20)
-    # page = {"items": [...], "total": int, "page": int, "per_page": int, "pages": int}
-```
+    # {"items": [...], "total": int, "page": int, "per_page": int, "pages": int}
 
-Курсорная пагинация (простая):
-
-```python
-from khorsyio.db import apply_cursor
+# cursor pagination
 stmt = apply_cursor(stmt, User, cursor_value=last_id, cursor_field="id", order="asc")
 ```
 
+---
+
+## Metrics and Event log
+
+```python
+app.bus.metrics.snapshot()
+# {"HandlerName": {"processed": 10, "errors": 1, "avg_ms": 5.2}}
+
+app.bus.event_log.recent(50)
+app.bus.event_log.recent(20, event_type="user.create")
+app.bus.event_log.recent(20, trace_id="abc123")
+
+app.router.get("/metrics", lambda req, send: Response.json(send, app.bus.metrics.snapshot()))
+app.router.get("/events",  lambda req, send: Response.json(send, app.bus.event_log.recent(50)))
+```
+
+---
+
+## Multiprocessing
+
+CPU-bound handlers run in separate processes without changing any other code:
+
+```python
+class HeavyHandler(Handler):
+    subscribes_to = "heavy.task"
+    publishes = "heavy.result"
+    execution_mode = "process"
+
+    async def process(self, data, ctx):
+        return TaskResult(value=some_heavy_math(data.n))
+```
+
+---
 
 ## Settings
 
@@ -327,6 +296,65 @@ DB_POOL_MAX=10
 BUS_HANDLER_TIMEOUT=30.0
 ```
 
+---
+
 ## Graceful shutdown
 
-Шина дожидает обработки оставшихся событий (drain_timeout=5s). Pending bus.request получают error с code="shutdown". Scheduled tasks отменяются.
+The bus waits for the queue to drain (`drain_timeout=5s`). Pending `bus.request` calls receive an error with `code="shutdown"`. Scheduled tasks are cancelled.
+
+---
+
+## Comparison with alternatives
+
+There is no direct equivalent in Python. The closest tools each solve only part of the problem.
+
+`python-cqrs`, `pymediator`, `python-mediator` implement the mediator pattern with typed handlers — conceptually close. But these are libraries without HTTP, WebSocket, DB, or a scheduler. You still need to assemble a stack on top using FastAPI or Litestar, SQLAlchemy, APScheduler, and python-socketio.
+
+`FastAPI` + `Litestar` are mature HTTP frameworks with DI and type safety. Litestar uses the same `msgspec`. But they solve the HTTP API problem, not the event chain problem. The internal bus with blocks still needs to be built on top of them manually.
+
+`bubus`, `messagebus` are production async event bus libraries. More mature on the bus side, but without an HTTP layer or DB.
+
+The real distinction of khorsyio is full-stack cohesion: in-process event bus, HTTP ASGI, WebSocket, DB, HTTP client, scheduler, DI, and multiprocessing in a single package with a single pattern. The alternative is a stack of 5-6 separate libraries, each with its own integration patterns.
+
+---
+
+## TODO
+
+**OpenAPI / Swagger.** Auto-generation of documentation from types. FastAPI and Litestar do this — khorsyio does not. A significant gap for API-first development.
+
+**Testing utilities.** No test client for HTTP, no mock bus for isolated handler testing.
+
+**Type-safe DI.** DI by string name is not verified at startup. A typo silently injects `app` instead of the intended dependency.
+
+**Retry and dead letter queue.** No built-in retry policy on handler failure and no mechanism for storing unprocessed events.
+
+**Observability.** Metrics and event log exist, but there is no integration with OpenTelemetry, Prometheus, or structured logging.
+
+---
+
+## Documentation
+
+- [Getting started](docs/getting_started.md)
+- [Architecture](docs/architecture.md)
+- [App and lifecycle](docs/app.md)
+- [Settings](docs/settings.md)
+- [HTTP](docs/http.md)
+- [Bus, metrics, event log](docs/bus.md)
+- [Events and structs](docs/events.md)
+- [Handlers and DI](docs/handlers.md)
+- [Domains and namespace](docs/domain.md)
+- [WebSocket](docs/transport.md)
+- [HTTP client](docs/client.md)
+- [Database](docs/db.md)
+- [SQLAlchemy helpers](docs/query.md)
+- [Multiprocessing](docs/multi_core.md)
+- [Decomposition methodology](docs/decomposition.md)
+- [Templates and recipes](docs/templates.md)
+- [Architecture patterns](docs/architecture_patterns.md)
+- [LLM guidelines](docs/llm_guidelines.md)
+
+---
+
+## License
+
+MIT
