@@ -31,6 +31,7 @@ async def test_process_execution():
     
     # Запускаем шину в фоне
     bus_task = asyncio.create_task(bus.start())
+    await asyncio.sleep(0.1)
     
     try:
         # Делаем запрос

@@ -57,7 +57,11 @@ class ProcessPool:
 
     def stop(self):
         if self.executor:
-            self.executor.shutdown(wait=True)
+            import sys
+            if sys.version_info >= (3, 9):
+                self.executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                self.executor.shutdown(wait=False)
             self.executor = None
 
     async def run_task(self, handler_module: str, handler_class: str, envelope: Envelope) -> Envelope:
@@ -148,7 +152,7 @@ class Bus:
         self.app = app
         self._pool = ProcessPool(pool_size or os.cpu_count() or 4)
         self._subs: dict[str, list[Handler]] = defaultdict(list)
-        self._queue: asyncio.Queue[Envelope] = asyncio.Queue()
+        self._queue: asyncio.Queue[Envelope] = None  # type: ignore
         self._running = False
         self._draining = False
         self._error_callbacks: list = []
@@ -286,6 +290,8 @@ class Bus:
                 log.error(f"scheduled task '{task.event_type}' error err={e}")
 
     async def start(self):
+        self._queue = asyncio.Queue()
+        self._waiters = {}
         self._running = True
         self._pool.start()
         for task in self._scheduled:

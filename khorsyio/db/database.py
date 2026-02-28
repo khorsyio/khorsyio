@@ -77,7 +77,7 @@ class Database:
     async def fetch(self, query: str, *args) -> list[dict]:
         assert self._engine is not None
         sql, params = _translate_placeholders(query, args)
-        async with self._engine.connect() as conn:
+        async with self._engine.begin() as conn:
             res = await conn.execute(text(sql), params)
             rows = res.mappings().all()
             return [dict(r) for r in rows]
@@ -85,7 +85,7 @@ class Database:
     async def fetchrow(self, query: str, *args) -> dict | None:
         assert self._engine is not None
         sql, params = _translate_placeholders(query, args)
-        async with self._engine.connect() as conn:
+        async with self._engine.begin() as conn:
             res = await conn.execute(text(sql), params)
             row = res.mappings().first()
             return dict(row) if row else None
@@ -93,7 +93,7 @@ class Database:
     async def fetchval(self, query: str, *args):
         assert self._engine is not None
         sql, params = _translate_placeholders(query, args)
-        async with self._engine.connect() as conn:
+        async with self._engine.begin() as conn:
             res = await conn.execute(text(sql), params)
             one = res.scalar_one_or_none()
             return one

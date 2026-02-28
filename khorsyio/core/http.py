@@ -164,11 +164,15 @@ class Router:
 
     def resolve(self, method: str, path: str) -> tuple[Callable | None, dict]:
         if path in self._routes:
-            return self._routes[path].get(method.upper()), {}
+            handler = self._routes[path].get(method.upper())
+            if handler:
+                return handler, {}
         for pattern, methods in self._routes.items():
             params = self._match(pattern, path)
             if params is not None:
-                return methods.get(method.upper()), params
+                handler = methods.get(method.upper())
+                if handler:
+                    return handler, params
         return None, {}
 
     def _match(self, pattern: str, path: str) -> dict | None:
@@ -215,6 +219,7 @@ class HttpApp:
             await Response.error(send, "not found", 404, code="not_found")
             return
         req.path_params = params
+        req.scope["path_params"] = params
 
         t0 = time.time()
         req.state["start_time"] = t0
