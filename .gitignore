@@ -51,3 +51,6 @@ coverage.xml
 # Project specific
 uv.lock
 .python-version
+todo
+promt
+
